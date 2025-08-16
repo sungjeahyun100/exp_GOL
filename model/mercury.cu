@@ -29,28 +29,143 @@ class GOLsolver_1{
         p2::PerceptronLayer fc4;
         p2::PerceptronLayer fc_out;
 
-        int batch;
-        double learning_rate;
         p2::ActType fcAct;
         p2::ActType convAct;
         p2::ActType outAct;
         p2::LossType l;
+
+        // 헬퍼 함수들 - 문자열을 enum으로 변환
+        p2::ActType getActType(const std::string& actStr) {
+            if (actStr == "LReLU") return p2::ActType::LReLU;
+            else if (actStr == "Tanh") return p2::ActType::Tanh;
+            else if (actStr == "ReLU") return p2::ActType::ReLU;
+            else if (actStr == "Sigmoid") return p2::ActType::Sigmoid;
+            else if (actStr == "Softmax") return p2::ActType::Softmax;
+            else if (actStr == "Softplus") return p2::ActType::Softplus;
+            else if (actStr == "Softsign") return p2::ActType::Softsign;
+            else if (actStr == "ELU") return p2::ActType::ELU;
+            else if (actStr == "SELU") return p2::ActType::SELU;
+            else if (actStr == "Swish") return p2::ActType::Swish;
+            else if (actStr == "Identity") return p2::ActType::Identity;
+            else return p2::ActType::LReLU; // 기본값
+        }
+
+        p2::LossType getLossType(const std::string& lossStr) {
+            if (lossStr == "BCEWithLogits") return p2::LossType::BCEWithLogits;
+            else if (lossStr == "CrossEntropy") return p2::LossType::CrossEntropy;
+            else if (lossStr == "MSE") return p2::LossType::MSE;
+            else return p2::LossType::BCEWithLogits; // 기본값
+        }
+
+        d2::InitType getInitType(const std::string& initStr) {
+            if (initStr == "He") return d2::InitType::He;
+            else if (initStr == "Xavier") return d2::InitType::Xavier;
+            else if (initStr == "Uniform") return d2::InitType::Uniform;
+            else return d2::InitType::Xavier; // 기본값
+        }
+
+        p2::optType getOptType(const std::string& optStr) {
+            if (optStr == "Adam") return p2::optType::Adam;
+            else if (optStr == "SGD") return p2::optType::SGD;
+            else return p2::optType::Adam; // 기본값
+        }
+
     public:
-        GOLsolver_1(int bs, double lr) : batch(bs), learning_rate(lr),
 
-         // Conv layers: 10x10 -> feature extraction
-         conv1(bs, 1, 10, 10,   8, 3, 3,  0, 0,  1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str), // 10x10x1 -> 8x8x8
-         conv2(bs, 8, 8, 8,     16, 3, 3, 0, 0,  1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str), // 8x8x8 -> 6x6x16
-         conv3(bs, 16, 6, 6,    32, 3, 3, 0, 0,  1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str), // 6x6x16 -> 4x4x32
+        // 현재 설정 조회 함수들
+        const model_id& getModelInfo() const { return model_info; }
+        
+        void printCurrentConfig() const {
+            std::cout << "=== 현재 모델 설정 ===" << std::endl;
+            std::cout << "모델명: " << model_info.model_name << std::endl;
+            std::cout << "Conv 활성화: " << model_info.conv_active << std::endl;
+            std::cout << "Conv 초기화: " << model_info.conv_init << std::endl;
+            std::cout << "FC 활성화: " << model_info.fc_active << std::endl;
+            std::cout << "FC 초기화: " << model_info.fc_init << std::endl;
+            std::cout << "옵티마이저: " << model_info.optimizer << std::endl;
+            std::cout << "손실함수: " << model_info.loss << std::endl;
+            std::cout << "에폭: " << model_info.epoch << std::endl;
+            std::cout << "배치크기: " << model_info.batch_size << std::endl;
+            std::cout << "학습률: " << model_info.learning_rate << std::endl;
+            std::cout << "=====================" << std::endl;
+        }
 
-         // FC layers: flattened features -> prediction
-         fc1(bs, 4*4*32, 256, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),     // 512 -> 256
-         fc2(bs, 256, 128, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),         // 256 -> 128
-         fc3(bs, 128, 64, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),          // 128 -> 64
-         fc4(bs, 64, 32, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),          // 64 -> 32
-         fc_out(bs, 32, 8, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str)     // 32 -> 8 (output)
+        // CUDA 환경 확인
+        bool checkCudaEnvironment() {
+            int deviceCount = 0;
+            cudaError_t err = cudaGetDeviceCount(&deviceCount);
+            if (err != cudaSuccess || deviceCount == 0) {
+                std::cerr << "[FATAL] No CUDA device: " << cudaGetErrorString(err) << std::endl;
+                return false;
+            }
+            std::cout << "CUDA devices found: " << deviceCount << std::endl;
+            return true;
+        }
 
-         {
+        //save & load
+        bool saveModel(const std::string& filepath) const {
+            std::ofstream out(filepath, std::ios::binary);
+            if (!out) return false;
+            const char magic[4] = {'G','O','L','1'};
+            out.write(magic, sizeof(magic));
+            uint32_t layerCount = 8;
+            out.write(reinterpret_cast<const char*>(&layerCount), sizeof(layerCount));
+            conv1.saveBinary(out);
+            conv2.saveBinary(out);
+            conv3.saveBinary(out);
+            fc1.saveBinary(out);
+            fc2.saveBinary(out);
+            fc3.saveBinary(out);
+            fc4.saveBinary(out);
+            fc_out.saveBinary(out);
+            return static_cast<bool>(out);
+        }
+
+        bool loadModel(const std::string& filepath){
+            std::ifstream in(filepath, std::ios::binary);
+            if (!in) return false;
+            char magic[4];
+            in.read(magic, sizeof(magic));
+            if (!in || magic[0] != 'G' || magic[1] != 'O' || magic[2] != 'L' || magic[3] != '1') return false;
+            uint32_t layerCount = 0;
+            in.read(reinterpret_cast<char*>(&layerCount), sizeof(layerCount));
+            if (!in || layerCount != 8) return false;
+            conv1.loadBinary(in, hs.model_str);
+            conv2.loadBinary(in, hs.model_str);
+            conv3.loadBinary(in, hs.model_str);
+            fc1.loadBinary(in, hs.model_str);
+            fc2.loadBinary(in, hs.model_str);
+            fc3.loadBinary(in, hs.model_str);
+            fc4.loadBinary(in, hs.model_str);
+            fc_out.loadBinary(in, hs.model_str);
+            return static_cast<bool>(in);
+        }
+
+        // 기본 생성자
+        GOLsolver_1() : GOLsolver_1(50, 1e-6, 1000) {} // 기본값으로 위임
+
+        //간편히 실행해볼 수 있도록 설정을 단순화한 생성자
+        GOLsolver_1(int bs, double lr, int ep) : 
+            // handleStream과 다른 멤버들을 먼저 초기화
+            hs(),
+            act(),
+            loss(),
+            // 레이어 초기화 (기본 생성자 사용)
+            conv1(bs, 1, 10, 10, 8, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
+            conv2(bs, 8, 8, 8, 16, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
+            conv3(bs, 16, 6, 6, 32, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
+            fc1(bs, 4*4*32, 256, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            fc2(bs, 256, 128, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            fc3(bs, 128, 64, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            fc4(bs, 64, 32, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            fc_out(bs, 32, 8, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            // 활성화 함수와 손실 함수 타입 설정
+            convAct(p2::ActType::LReLU),
+            fcAct(p2::ActType::Tanh),
+            outAct(p2::ActType::Identity),
+            l(p2::LossType::BCEWithLogits)
+        {
+            // model_info 설정
             model_info.model_name = "mercury";
             model_info.conv_active = "LReLU";
             model_info.conv_init = "He";
@@ -60,25 +175,42 @@ class GOLsolver_1{
             model_info.fc_layer_count = 5;
             model_info.optimizer = "Adam";
             model_info.loss = "BCEWithLogits";
-            model_info.epoch = 1000;
+            model_info.epoch = ep;
             model_info.batch_size = bs;
             model_info.learning_rate = lr;
 
-            convAct = p2::ActType::LReLU;
-            fcAct = p2::ActType::Tanh;
-            l = p2::LossType::BCEWithLogits;
-
-            if(l == p2::LossType::BCEWithLogits){
-                outAct = p2::ActType::Identity;
-            }else if(l == p2::LossType::CrossEntropy){
-                outAct = p2::ActType::Softmax;
-            }else{
-                outAct = p2::ActType::LReLU;
-            }
-
+            // dataset 설정
             using_dataset.seed = 54321;
             using_dataset.sample_quantity = 8000;
             using_dataset.alive_ratio = 0.3;
+        }
+
+        // model_info, dataset_info를 받는 생성자
+        GOLsolver_1(const model_id& config, const dataset_id& dataset) :
+            // handleStream과 다른 멤버들을 먼저 초기화
+            hs(),
+            act(), 
+            loss(),
+            // 레이어 초기화
+            conv1(config.batch_size, 1, 10, 10, 8, 3, 3, 0, 0, 1, 1, getOptType(config.optimizer), getInitType(config.conv_init), config.learning_rate, hs.model_str),
+            conv2(config.batch_size, 8, 8, 8, 16, 3, 3, 0, 0, 1, 1, getOptType(config.optimizer), getInitType(config.conv_init), config.learning_rate, hs.model_str),
+            conv3(config.batch_size, 16, 6, 6, 32, 3, 3, 0, 0, 1, 1, getOptType(config.optimizer), getInitType(config.conv_init), config.learning_rate, hs.model_str),
+            fc1(config.batch_size, 4*4*32, 256, getOptType(config.optimizer), getInitType(config.fc_init), config.learning_rate, hs.model_str),
+            fc2(config.batch_size, 256, 128, getOptType(config.optimizer), getInitType(config.fc_init), config.learning_rate, hs.model_str),
+            fc3(config.batch_size, 128, 64, getOptType(config.optimizer), getInitType(config.fc_init), config.learning_rate, hs.model_str),
+            fc4(config.batch_size, 64, 32, getOptType(config.optimizer), getInitType(config.fc_init), config.learning_rate, hs.model_str),
+            fc_out(config.batch_size, 32, 8, getOptType(config.optimizer), getInitType(config.fc_init), config.learning_rate, hs.model_str),
+            // 활성화 함수와 손실 함수 타입 설정
+            convAct(getActType(config.conv_active)),
+            fcAct(getActType(config.fc_active)),
+            l(getLossType(config.loss)),
+            outAct(getLossType(config.loss) == p2::LossType::BCEWithLogits ? p2::ActType::Identity : 
+                   (getLossType(config.loss) == p2::LossType::CrossEntropy ? p2::ActType::Softmax : p2::ActType::LReLU))
+        {
+            model_info = config;
+            model_info.conv_layer_count = 3;
+            model_info.fc_layer_count = 5;
+            using_dataset = dataset;
         }
 
         void genDataset(){
@@ -143,45 +275,7 @@ class GOLsolver_1{
             conv1.backward(delta_conv2, conv1_act_deriv, str);
         }
 
-        bool saveModel(const std::string& filepath) const {
-            std::ofstream out(filepath, std::ios::binary);
-            if (!out) return false;
-            const char magic[4] = {'G','O','L','1'};
-            out.write(magic, sizeof(magic));
-            uint32_t layerCount = 8;
-            out.write(reinterpret_cast<const char*>(&layerCount), sizeof(layerCount));
-            conv1.saveBinary(out);
-            conv2.saveBinary(out);
-            conv3.saveBinary(out);
-            fc1.saveBinary(out);
-            fc2.saveBinary(out);
-            fc3.saveBinary(out);
-            fc4.saveBinary(out);
-            fc_out.saveBinary(out);
-            return static_cast<bool>(out);
-        }
-
-        bool loadModel(const std::string& filepath){
-            std::ifstream in(filepath, std::ios::binary);
-            if (!in) return false;
-            char magic[4];
-            in.read(magic, sizeof(magic));
-            if (!in || magic[0] != 'G' || magic[1] != 'O' || magic[2] != 'L' || magic[3] != '1') return false;
-            uint32_t layerCount = 0;
-            in.read(reinterpret_cast<char*>(&layerCount), sizeof(layerCount));
-            if (!in || layerCount != 8) return false;
-            conv1.loadBinary(in, hs.model_str);
-            conv2.loadBinary(in, hs.model_str);
-            conv3.loadBinary(in, hs.model_str);
-            fc1.loadBinary(in, hs.model_str);
-            fc2.loadBinary(in, hs.model_str);
-            fc3.loadBinary(in, hs.model_str);
-            fc4.loadBinary(in, hs.model_str);
-            fc_out.loadBinary(in, hs.model_str);
-            return static_cast<bool>(in);
-        }
-
-        void train(int epochs){
+        void train(){
             auto start = std::chrono::steady_clock::now();
             
             // GOL 데이터 로드 (배치 형태로 직접 로드)
@@ -192,8 +286,8 @@ class GOLsolver_1{
             int output_size = Y.getCol();  // 출력 크기 (8)
             
             std::cout << "[데이터 로드 완료] " << N << "개 샘플, 입력크기: " << input_size << ", 출력크기: " << output_size << std::endl;
-            
-            int B = batch;           // 배치 크기
+
+            int B = model_info.batch_size;           // 배치 크기
             int num_batches = (N + B - 1) / B;  // 총 배치 수
             
             // 배치별로 데이터 미리 분할
@@ -214,7 +308,7 @@ class GOLsolver_1{
 
             // 훈련 루프
             std::string progress_avgloss;
-            for(int e = 1; e <= epochs; e++) {
+            for(int e = 1; e <= model_info.epoch; e++) {
                 double avgloss = 0;
                 
                 for(int j = 0; j < num_batches; j++){
@@ -248,11 +342,11 @@ class GOLsolver_1{
                     // 진행 상황 표시
                     std::string progress_batch = "batch" + std::to_string(j+1);
                     std::string progress_loss = "loss:" + std::to_string(loss_val);
-                    printProgressBar(e, epochs, start, progress_avgloss + " | " + progress_batch + " 의 " + progress_loss);
+                    printProgressBar(e, model_info.epoch, start, progress_avgloss + " | " + progress_batch + " 의 " + progress_loss);
                 }
                 
                 avgloss = avgloss / static_cast<double>(num_batches);
-                progress_avgloss = "[epoch" + std::to_string(e+1) + "/" + std::to_string(epochs) + "의 avgloss]:" + std::to_string(avgloss);
+                progress_avgloss = "[epoch" + std::to_string(e+1) + "/" + std::to_string(model_info.epoch) + "의 avgloss]:" + std::to_string(avgloss);
                 
                 // Epoch별 평균 loss 저장
                 epoch_loss_file << e << " " << avgloss << std::endl;
@@ -270,44 +364,63 @@ class GOLsolver_1{
                          ).count() << "초" << std::endl;
         }
 
+        // 전체 실행 프로세스
+        void run() {
+            try {
+                std::cout << "\n=== GOL CNN Solver 시작 ===" << std::endl;
+                
+                // CUDA 환경 확인
+                if (!checkCudaEnvironment()) {
+                    throw std::runtime_error("CUDA 환경을 사용할 수 없습니다.");
+                }
+
+                // 현재 설정 출력
+                printCurrentConfig();
+
+                std::cout << "\n=== 데이터셋 생성 ===" << std::endl;
+                genDataset();
+
+                std::cout << "\n=== 모델 훈련 시작 ===" << std::endl;
+                train();
+                
+                std::cout << "\n=== 훈련 완료! ===" << std::endl;
+                
+            } catch (const std::exception& e) {
+                std::cerr << "Error: " << e.what() << std::endl;
+                throw;
+            }
+        }
+
 };
 
 
 int main(){
     try {
-        // CUDA 디바이스 확인
-        int deviceCount = 0;
-        cudaError_t err = cudaGetDeviceCount(&deviceCount);
-        if (err != cudaSuccess || deviceCount == 0) {
-            std::cerr << "[FATAL] No CUDA device: " << cudaGetErrorString(err) << std::endl;
-            return 1;
-        }
-        std::cout << "CUDA devices found: " << deviceCount << std::endl;
-        
-        // 설정
-        constexpr int BATCH_SIZE = 50;
-        constexpr int EPOCHS = 1000;
-        constexpr double lr = 1e-6;
-        
-        std::cout << "\n=== GOL CNN Solver 훈련 시작 ===" << std::endl;
-        std::cout << "Batch Size: " << BATCH_SIZE << std::endl;
-        std::cout << "Epochs: " << EPOCHS << std::endl;
-        std::cout << "Learning Rate: " << lr << std::endl;
+        model_id config;
+        config.model_name = "mercury_custom";
+        config.conv_active = "LReLU";
+        config.conv_init = "He";
+        config.fc_active = "Sigmoid";
+        config.fc_init = "Xavier";
+        config.optimizer = "Adam";
+        config.loss = "BCEWithLogits";
+        config.epoch = 500;
+        config.batch_size = 64;
+        config.learning_rate = 1e-5;
 
-        // 솔버 생성
-        GOLsolver_1 mercury(BATCH_SIZE, lr);
+        dataset_id dataset_info;
+        dataset_info.seed = 54321;
+        dataset_info.sample_quantity = 8000;
+        dataset_info.alive_ratio = 0.3;
 
-        std::cout << "\n=== 데이터셋 생성 ===" << std::endl;
-        mercury.genDataset();
+        GOLsolver_1 mercury(config, dataset_info);
 
-        std::cout << "\n=== 모델 훈련 시작 ===" << std::endl;
-        // 훈련 실행
-        mercury.train(EPOCHS);
-        
-        std::cout << "\n=== 훈련 완료! ===" << std::endl;
+
+        // 전체 프로세스 실행
+        mercury.run();
         
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "프로그램 실행 중 오류: " << e.what() << std::endl;
         return 1;
     }
     

@@ -1,4 +1,4 @@
-#exp_gol
+**EXP_GOL**
 
 사용환경:13th Gen Intel(R) Core(TM) i7-13650HX, Geforce RTX 4060 for laptop, ubuntu 24.04 LTS 
 
@@ -7,7 +7,7 @@ python 가상환경 활성화 명령어: source $(pwd)/.venv/bin/activate
 
 
 
-#실험노트
+**실험노트**
 based topic:풀지 못함이 수학적으로 증명된 문제를 인공지능이 풀이를 시도한다면 인공지능은 어떤 결론을 내릴 것인가? 
 
 attampt 1: 분류형 신경망 모델(mlp)에게 초기조건만 쥐어준 후 미래를 예측하도록 훈련시켜본다.
