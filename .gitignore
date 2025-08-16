@@ -1,0 +1,72 @@
+# Build directories
+build/
+cmake-build-*/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+install_manifest.txt
+
+# Compiled Object files
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# CUDA compiled files
+*.ptx
+*.cubin
+*.fatbin
+
+# Executables
+*.exe
+*.out
+*.app
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Model and data files
+model/*.bin
+model/*.pth
+model/*.h5
+model/*.ckpt
+data/
+*.dat
+*.csv
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+database-*/
+graph/
+
+# Python cache (if any python scripts)
+__pycache__/
+*.pyc
+*.pyo
