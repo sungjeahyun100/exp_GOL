@@ -63,6 +63,7 @@ logs/
 *.temp
 *.bak
 
+
 # Python cache (if any python scripts)
 __pycache__/
 *.pyc
