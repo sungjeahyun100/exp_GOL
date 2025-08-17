@@ -14,6 +14,7 @@ class GOLsolver_1{
     private:
         model_id model_info;
         dataset_id using_dataset;
+        dataset_id test_data_info;
 
         p2::handleStream hs;
         p2::ActivateLayer act;
@@ -183,10 +184,14 @@ class GOLsolver_1{
             using_dataset.seed = 54321;
             using_dataset.sample_quantity = 8000;
             using_dataset.alive_ratio = 0.3;
+
+            test_data_info.seed = 98624;
+            test_data_info.sample_quantity = 100;
+            test_data_info.alive_ratio = 0.3;
         }
 
         // model_info, dataset_info를 받는 생성자
-        GOLsolver_1(const model_id& config, const dataset_id& dataset) :
+        GOLsolver_1(const model_id& config, const dataset_id& dataset, const dataset_id& test_dataset) :
             // handleStream과 다른 멤버들을 먼저 초기화
             hs(),
             act(), 
@@ -211,10 +216,15 @@ class GOLsolver_1{
             model_info.conv_layer_count = 3;
             model_info.fc_layer_count = 5;
             using_dataset = dataset;
+            test_data_info = test_dataset;
         }
 
         void genDataset(){
             GOL_2::generateGameOfLifeData(using_dataset.sample_quantity, using_dataset.alive_ratio, using_dataset.seed, using_dataset);
+        }
+
+        void genTestDataset(){
+            GOL_2::generateGameOfLifeData(test_data_info.sample_quantity, test_data_info.alive_ratio, test_data_info.seed, test_data_info);
         }
 
         std::pair<d2::d_matrix_2<double>, double> forward(d2::d_matrix_2<double> X, d2::d_matrix_2<double> target, cudaStream_t str = 0){
@@ -364,6 +374,56 @@ class GOLsolver_1{
                          ).count() << "초" << std::endl;
         }
 
+        void test(){
+            auto start = std::chrono::steady_clock::now();
+            
+            // GOL 데이터 로드 (배치 형태로 직접 로드)
+            auto [X, Y] = GOL_2::LoadingDataBatch(test_data_info, hs.model_str);
+
+            int N = X.getRow();      // 전체 데이터 개수
+            int input_size = X.getCol();   // 입력 크기 (100)
+            int output_size = Y.getCol();  // 출력 크기 (8)
+            
+            std::cout << "[데이터 로드 완료] " << N << "개 샘플, 입력크기: " << input_size << ", 출력크기: " << output_size << std::endl;
+
+            int B = model_info.batch_size;           // 배치 크기
+            int num_batches = (N + B - 1) / B;  // 총 배치 수
+            
+            // 배치별로 데이터 미리 분할
+            std::vector<d2::d_matrix_2<double>> batch_data(num_batches), batch_labels(num_batches);
+            for(int i = 0; i < num_batches; ++i){
+                batch_data[i] = X.getBatch(B, i*B);
+                batch_labels[i] = Y.getBatch(B, i*B);
+                printProgressBar(i+1, num_batches, start, "batch loading... (batch " + std::to_string(i+1) + "/" + std::to_string(num_batches) + ")");
+            }
+            std::cout << std::endl;
+            std::cout << "[배치 로드 완료] 총 " << N << "개 데이터, " << num_batches << "개 배치" << std::endl;
+
+            // 결과 저장을 위한 파일 생성
+            fs::create_directories("../result/");
+            std::ofstream result_file("../result/test_results" + getModelId(model_info) + "-to_trained_by-" + getDatasetId(using_dataset) + ".txt");
+            if (!result_file) {
+                throw std::runtime_error("결과 파일을 열 수 없습니다.");
+            }
+
+            // 테스트 수행
+            for (int i = 0; i < num_batches; ++i) {
+                // 배치별로 모델에 입력하고 결과를 얻음
+                auto [output, loss] = forward(batch_data[i], batch_labels[i], hs.model_str);
+                output.cpyToHost(); // GPU에서 CPU로 데이터 복사
+                result_file << "Batch " << i + 1 << ":\n";
+                for (int j = 0; j < output.getRow(); ++j) {
+                    for(int k = 0; k < output.getCol(); ++k) {
+                        result_file << output.getHostPointer()[j*output.getCol() + k] << ", ";
+                    }
+                    result_file << "\n";
+                }
+                result_file << "Loss: " << loss << "\n";
+            }
+
+            result_file.close();
+        }
+
         // 전체 실행 프로세스
         void run() {
             try {
@@ -410,14 +470,22 @@ int main(){
 
         dataset_id dataset_info;
         dataset_info.seed = 54321;
-        dataset_info.sample_quantity = 32000;
+        dataset_info.sample_quantity = 8000;
         dataset_info.alive_ratio = 0.3;
 
-        GOLsolver_1 mercury(config, dataset_info);
+        dataset_id test_dataset_info;
+        test_dataset_info.seed = 98624;
+        test_dataset_info.sample_quantity = 640;
+        test_dataset_info.alive_ratio = 0.3;
 
+        GOLsolver_1 mercury(config, dataset_info, test_dataset_info);
 
         // 전체 프로세스 실행
         mercury.run();
+
+        //훈련 후 테스트 데이터셋 생성 및 테스트
+        mercury.genTestDataset();
+        mercury.test();
         
     } catch (const std::exception& e) {
         std::cerr << "프로그램 실행 중 오류: " << e.what() << std::endl;
