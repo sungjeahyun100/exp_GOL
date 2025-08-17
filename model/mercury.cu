@@ -400,17 +400,17 @@ int main(){
         config.model_name = "mercury_custom";
         config.conv_active = "LReLU";
         config.conv_init = "He";
-        config.fc_active = "Sigmoid";
+        config.fc_active = "Tanh";
         config.fc_init = "Xavier";
         config.optimizer = "Adam";
         config.loss = "BCEWithLogits";
-        config.epoch = 500;
+        config.epoch = 1000;
         config.batch_size = 64;
         config.learning_rate = 1e-5;
 
         dataset_id dataset_info;
         dataset_info.seed = 54321;
-        dataset_info.sample_quantity = 8000;
+        dataset_info.sample_quantity = 32000;
         dataset_info.alive_ratio = 0.3;
 
         GOLsolver_1 mercury(config, dataset_info);

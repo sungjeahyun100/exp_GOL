@@ -2,6 +2,8 @@
 
 사용환경:13th Gen Intel(R) Core(TM) i7-13650HX, Geforce RTX 4060 for laptop, ubuntu 24.04 LTS 
 
+깔려 있어야 하는 것: gnuplot, python3 이상, nvcc12.8컴파일러, g++11컴파일러
+
 python 가상환경 활성화 명령어: source $(pwd)/.venv/bin/activate
 빌드 명렁어: ./build.sh
 
