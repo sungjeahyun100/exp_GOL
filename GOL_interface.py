@@ -36,7 +36,7 @@ DARK_GRAY = (40, 40, 40)
 BLUE = (50, 150, 255)
 YELLOW = (255, 255, 0)
 
-# 모델 경로 - 실제 경로로 수정하세요
+# 모델 경로
 MODEL_PATH = b"../model_save/mercury_custom_conv3-LReLU-He_fc5-Tanh-Xavier_BCEWithLogits_Adam-1000-50-0.000001-2025-08-17_193828"
 
 # 게임 클래스

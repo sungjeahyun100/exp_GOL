@@ -486,14 +486,9 @@ int main(){
         test_dataset_info.sample_quantity = 500;
         test_dataset_info.alive_ratio = 0.3;
 
-        std::string loaded_model_timestamp = "-2025-08-17_193828"; // 32000개의 샘플로 훈련된 모델의 타임스탬프
+        GOLsolver_1 mercury(config, dataset_info, test_dataset_info);
 
-        GOLsolver_1 mercury(config, dataset_info, test_dataset_info, false);
-        mercury.id = mercury.id + loaded_model_timestamp;
-
-        // 모델 로드
-        mercury.loadModel("../model_save/" + mercury.id);
-
+        mercury.run();
         mercury.test();
 
     } catch (const std::exception& e) {

@@ -147,20 +147,20 @@ class GOLsolver_1{
         GOLsolver_1() : GOLsolver_1(1, 1e-6, 1000) {} // 기본값으로 위임
 
         //간편히 실행해볼 수 있도록 설정을 단순화한 생성자
-        GOLsolver_1(int bs, double lr, int ep) : 
+        GOLsolver_1(int bs, double lr, int ep, bool use_non_default_stream = true) : 
             // handleStream과 다른 멤버들을 먼저 초기화
             hs(),
             act(),
             loss(),
             // 레이어 초기화 (기본 생성자 사용)
-            conv1(bs, 1, 10, 10, 8, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
-            conv2(bs, 8, 8, 8, 16, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
-            conv3(bs, 16, 6, 6, 32, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, hs.model_str),
-            fc1(bs, 4*4*32, 256, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
-            fc2(bs, 256, 128, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
-            fc3(bs, 128, 64, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
-            fc4(bs, 64, 32, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
-            fc_out(bs, 32, 8, p2::optType::Adam, d2::InitType::Xavier, lr, hs.model_str),
+            conv1(bs, 1, 10, 10, 8, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, use_non_default_stream ? 0 : hs.model_str),
+            conv2(bs, 8, 8, 8, 16, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, use_non_default_stream ? 0 : hs.model_str),
+            conv3(bs, 16, 6, 6, 32, 3, 3, 0, 0, 1, 1, p2::optType::Adam, d2::InitType::He, lr, use_non_default_stream ? 0 : hs.model_str),
+            fc1(bs, 4*4*32, 256, p2::optType::Adam, d2::InitType::Xavier, lr, use_non_default_stream ? 0 : hs.model_str),
+            fc2(bs, 256, 128, p2::optType::Adam, d2::InitType::Xavier, lr, use_non_default_stream ? 0 : hs.model_str),
+            fc3(bs, 128, 64, p2::optType::Adam, d2::InitType::Xavier, lr, use_non_default_stream ? 0 : hs.model_str),
+            fc4(bs, 64, 32, p2::optType::Adam, d2::InitType::Xavier, lr, use_non_default_stream ? 0 : hs.model_str),
+            fc_out(bs, 32, 8, p2::optType::Adam, d2::InitType::Xavier, lr, use_non_default_stream ? 0 : hs.model_str),
             // 활성화 함수와 손실 함수 타입 설정
             convAct(p2::ActType::LReLU),
             fcAct(p2::ActType::Tanh),
@@ -291,174 +291,7 @@ class GOLsolver_1{
             auto conv1_act_deriv = act.d_Active(conv1.getOutput(), convAct, str);
             conv1.backward(delta_conv2, conv1_act_deriv, str);
         }
-
-        void train(){
-            auto start = std::chrono::steady_clock::now();
-            
-            // GOL 데이터 로드 (배치 형태로 직접 로드)
-            auto [X, Y] = GOL_2::LoadingDataBatch(using_dataset, hs.model_str);
-
-            int N = X.getRow();      // 전체 데이터 개수
-            int input_size = X.getCol();   // 입력 크기 (100)
-            int output_size = Y.getCol();  // 출력 크기 (8)
-            
-            std::cout << "[데이터 로드 완료] " << N << "개 샘플, 입력크기: " << input_size << ", 출력크기: " << output_size << std::endl;
-
-            int B = model_info.batch_size;           // 배치 크기
-            int num_batches = (N + B - 1) / B;  // 총 배치 수
-            
-            // 배치별로 데이터 미리 분할
-            std::vector<d2::d_matrix_2<double>> batch_data(num_batches), batch_labels(num_batches);
-            for(int i = 0; i < num_batches; ++i){
-                batch_data[i] = X.getBatch(B, i*B);
-                batch_labels[i] = Y.getBatch(B, i*B);
-                printProgressBar(i+1, num_batches, start, "batch loading... (batch " + std::to_string(i+1) + "/" + std::to_string(num_batches) + ")");
-            }
-            std::cout << std::endl;
-            std::cout << "[배치 로드 완료] 총 " << N << "개 데이터, " << num_batches << "개 배치" << std::endl;
-            
-            // Loss 데이터 저장을 위한 파일 생성
-            std::string graphPath = "../graph/" + id;
-            fs::create_directories(graphPath);
-            std::ofstream epoch_loss_file(graphPath + "/epoch_loss.txt");
-            std::ofstream batch_loss_file(graphPath + "/batch_loss.txt");
-
-            // 훈련 루프
-            std::string progress_avgloss;
-            for(int e = 1; e <= model_info.epoch; e++) {
-                double avgloss = 0;
-                
-                for(int j = 0; j < num_batches; j++){
-                    // 순전파
-                    auto [output, loss_val] = forward(batch_data[j], batch_labels[j], hs.model_str);
-                    
-                    avgloss += loss_val;
-                    
-                    // NaN 체크
-                    if(std::isnan(loss_val)){
-                        std::cerr << "Loss is NaN at batch " << j+1 << ", epoch " << e << std::endl;
-                        std::cerr << "Output (first 10 elements): ";
-                        output.cpyToHost();
-                        for(int k=0; k<std::min(10, (int)output.size()); ++k) 
-                            std::cerr << output.getHostPointer()[k] << " ";
-                        std::cerr << std::endl;
-                        std::cerr << "Labels (first 10 elements): ";
-                        batch_labels[j].cpyToHost();
-                        for(int k=0; k<std::min(10, (int)batch_labels[j].size()); ++k) 
-                            std::cerr << batch_labels[j].getHostPointer()[k] << " ";
-                        std::cerr << std::endl;
-                        throw std::runtime_error("Invalid error in loss calc.");
-                    }
-                    
-                    // 역전파
-                    backward(output, batch_labels[j], hs.model_str);
-                    
-                    // 배치별 loss 저장
-                    batch_loss_file << e << " " << j+1 << " " << loss_val << std::endl;
-                    
-                    // 진행 상황 표시
-                    std::string progress_batch = "batch" + std::to_string(j+1);
-                    std::string progress_loss = "loss:" + std::to_string(loss_val);
-                    printProgressBar(e, model_info.epoch, start, progress_avgloss + " | " + progress_batch + " 의 " + progress_loss);
-                }
-                
-                avgloss = avgloss / static_cast<double>(num_batches);
-                progress_avgloss = "[epoch" + std::to_string(e+1) + "/" + std::to_string(model_info.epoch) + "의 avgloss]:" + std::to_string(avgloss);
-                
-                // Epoch별 평균 loss 저장
-                epoch_loss_file << e << " " << avgloss << std::endl;
-                
-            }
-            
-            // 파일 닫기
-            epoch_loss_file.close();
-            batch_loss_file.close();
-            
-            std::cout << std::endl;
-            std::cout << "총 학습 시간: "
-                      << std::chrono::duration_cast<std::chrono::seconds>(
-                             std::chrono::steady_clock::now() - start
-                         ).count() << "초" << std::endl;
-        }
-
-        void test(){
-            auto start = std::chrono::steady_clock::now();
-            
-            // GOL 데이터 로드 (배치 형태로 직접 로드)
-            auto [X, Y] = GOL_2::LoadingDataBatch(test_data_info, hs.model_str);
-
-            int N = X.getRow();      // 전체 데이터 개수
-            int input_size = X.getCol();   // 입력 크기 (100)
-            int output_size = Y.getCol();  // 출력 크기 (8)
-            
-            std::cout << "[데이터 로드 완료] " << N << "개 샘플, 입력크기: " << input_size << ", 출력크기: " << output_size << std::endl;
-
-            int B = model_info.batch_size;           // 배치 크기
-            int num_batches = (N + B - 1) / B;  // 총 배치 수
-            
-            // 배치별로 데이터 미리 분할
-            std::vector<d2::d_matrix_2<double>> batch_data(num_batches), batch_labels(num_batches);
-            for(int i = 0; i < num_batches; ++i){
-                batch_data[i] = X.getBatch(B, i*B);
-                batch_labels[i] = Y.getBatch(B, i*B);
-                printProgressBar(i+1, num_batches, start, "batch loading... (batch " + std::to_string(i+1) + "/" + std::to_string(num_batches) + ")");
-            }
-            std::cout << std::endl;
-            std::cout << "[배치 로드 완료] 총 " << N << "개 데이터, " << num_batches << "개 배치" << std::endl;
-
-            // 결과 저장을 위한 파일 생성
-            fs::create_directories("../result/");
-            std::ofstream result_file("../result/test_results" + id + "-to_trained_by-" + getDatasetId(using_dataset) + ".txt");
-            if (!result_file) {
-                throw std::runtime_error("결과 파일을 열 수 없습니다.");
-            }
-
-            // 테스트 수행
-            for (int i = 0; i < num_batches; ++i) {
-                // 배치별로 모델에 입력하고 결과를 얻음
-                auto [output, loss] = forward(batch_data[i], batch_labels[i], hs.model_str);
-                output.cpyToHost(); // GPU에서 CPU로 데이터 복사
-                result_file << "Batch " << i + 1 << ":\n";
-                for (int j = 0; j < output.getRow(); ++j) {
-                    result_file << "Sample " << j + 1 << ": ";
-                    for(int k = 0; k < output.getCol(); ++k) {
-                        result_file << output.getHostPointer()[j*output.getCol() + k] << ", ";
-                    }
-                    result_file << "\n";
-                }
-                result_file << "Loss: " << loss << "\n";
-            }
-
-            result_file.close();
-        }
-
-        // 전체 실행 프로세스
-        void run() {
-            try {
-                std::cout << "\n=== GOL CNN Solver 시작 ===" << std::endl;
-                
-                // CUDA 환경 확인
-                if (!checkCudaEnvironment()) {
-                    throw std::runtime_error("CUDA 환경을 사용할 수 없습니다.");
-                }
-
-                // 현재 설정 출력
-                printCurrentConfig();
-
-                std::cout << "\n=== 데이터셋 생성 ===" << std::endl;
-                genDataset();
-
-                std::cout << "\n=== 모델 훈련 시작 ===" << std::endl;
-                train();
-                
-                std::cout << "\n=== 훈련 완료! ===" << std::endl;
-                
-            } catch (const std::exception& e) {
-                std::cerr << "Error: " << e.what() << std::endl;
-                throw;
-            }
-        }
-
+        
 };
 
 extern "C"{
