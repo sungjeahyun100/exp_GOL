@@ -110,6 +110,10 @@ if(USE_CUDA)
     add_library(exp_GOL ${SOURCE_FILES} ${HEADER_FILES})
     set_source_files_properties(${SOURCE_FILES} PROPERTIES LANGUAGE CUDA)
     target_link_libraries(exp_GOL CUDA::cudart CUDA::curand CUDA::cublas)
+
+    set_target_properties(exp_GOL PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+    )
     
     # Link cuDNN if available
     if(USE_CUDNN)
@@ -149,22 +153,6 @@ else()
     target_compile_features(exp_GOL INTERFACE cxx_std_20)
 endif()
 
-# 실행파일 생성 코드단위.
-#if(USE_CUDA)
-#    if(EXISTS "${CMAKE_SOURCE_DIR}/model/genGOL.cu")
-#        add_executable(genGOL model/genGOL.cu)
-#        set_source_files_properties(model/genGOL.cu PROPERTIES LANGUAGE CUDA)
-#        target_link_libraries(genGOL exp_GOL)
-#        target_compile_features(genGOL PRIVATE cuda_std_17)
-#        target_include_directories(genGOL PRIVATE src)
-#        message(STATUS "Added genGOL executable")
-#    else()
-#        message(STATUS "genGOL executable skipped (source not found)")
-#    endif()
-#else()
-#    message(STATUS "genGOL executable skipped (requires CUDA)")
-#endif()
-
 if(USE_CUDA)
     if(EXISTS "${CMAKE_SOURCE_DIR}/model/mercury.cu")
         add_executable(mercury model/mercury.cu)
@@ -181,4 +169,31 @@ else()
     message(STATUS "mercury executable skipped (requires CUDA)")
 endif()
 
+
+if(USE_CUDA)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/model/mercury_python.cu")
+        # 공유 라이브러리(.so) 생성
+        add_library(mercury_python SHARED model/mercury_python.cu)
+        set_source_files_properties(model/mercury_python.cu PROPERTIES LANGUAGE CUDA)
+        
+        # 라이브러리 링크
+        target_link_libraries(mercury_python exp_GOL)
+        
+        # 컴파일 옵션 설정
+        target_compile_features(mercury_python PRIVATE cuda_std_17)
+        target_include_directories(mercury_python PRIVATE src)
+        
+        # 위치 독립적 코드 활성화 (공유 라이브러리에 필요)
+        set_target_properties(mercury_python PROPERTIES 
+            POSITION_INDEPENDENT_CODE ON
+            PREFIX ""  # lib 접두사 제거 (선택사항)
+        )
+        
+        message(STATUS "Added mercury_python shared library")
+    else()
+        message(STATUS "mercury_python shared library skipped (source not found)")
+    endif()
+else()
+    message(STATUS "mercury_python shared library skipped (requires CUDA)")
+endif()
 

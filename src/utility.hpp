@@ -52,6 +52,17 @@ inline std::string getModelId(model_id info){
            getCurrentTimestamp();
 }
 
+inline std::string getModelIdWithoutTimestamp(model_id info){
+    return info.model_name + "_" +
+           "conv" + std::to_string(info.conv_layer_count) + "-" + info.conv_active + "-" + info.conv_init + "_" +
+           "fc" + std::to_string(info.fc_layer_count) + "-" + info.fc_active + "-" + info.fc_init + "_" +
+           info.loss + "_" +
+           info.optimizer + "-" +
+           std::to_string(info.epoch) + "-" +
+           std::to_string(info.batch_size) + "-" +
+           std::to_string(info.learning_rate);
+}
+
 inline std::string getDatasetId(dataset_id info){
     return "database-" + std::to_string(info.seed) + "_" +
            std::to_string(info.sample_quantity) + "_" +

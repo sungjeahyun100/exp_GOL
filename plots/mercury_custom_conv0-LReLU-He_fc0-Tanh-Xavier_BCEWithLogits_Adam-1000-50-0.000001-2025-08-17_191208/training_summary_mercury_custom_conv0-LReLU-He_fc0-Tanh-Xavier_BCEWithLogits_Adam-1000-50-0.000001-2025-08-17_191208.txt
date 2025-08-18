@@ -1,0 +1,21 @@
+Game of Life CNN Training Summary
+=====================================
+실험 ID: mercury_custom_conv0-LReLU-He_fc0-Tanh-Xavier_BCEWithLogits_Adam-1000-50-0.000001-2025-08-17_191208
+생성 일시: 2025년 08월 17일 19:37:31
+
+📊 Epoch Loss 통계:
+- 총 에포크 수: 1000
+- 초기 손실: 0.745138
+- 최종 손실: 0.574063
+- 최소 손실: 0.574062
+- 전체 개선: .171075
+
+📈 마지막 에포크 Batch 통계:
+- 에포크: 1000
+- 평균 배치 손실: 0.574063
+
+🗂️ 생성된 그래프:
+- Epoch Average Loss: epoch_avg_loss_mercury_custom_conv0-LReLU-He_fc0-Tanh-Xavier_BCEWithLogits_Adam-1000-50-0.000001-2025-08-17_191208.png
+- Epoch Batch Comparison: epoch_batch_comparison_mercury_custom_conv0-LReLU-He_fc0-Tanh-Xavier_BCEWithLogits_Adam-1000-50-0.000001-2025-08-17_191208.png
+
+📁 파일 위치: /home/sjh100/바탕화면/exp_GOL/plots/mercury_custom_conv0-LReLU-He_fc0-Tanh-Xavier_BCEWithLogits_Adam-1000-50-0.000001-2025-08-17_191208/

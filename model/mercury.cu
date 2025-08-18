@@ -72,6 +72,7 @@ class GOLsolver_1{
         }
 
     public:
+        std::string id;
 
         // 현재 설정 조회 함수들
         const model_id& getModelInfo() const { return model_info; }
@@ -188,10 +189,12 @@ class GOLsolver_1{
             test_data_info.seed = 98624;
             test_data_info.sample_quantity = 100;
             test_data_info.alive_ratio = 0.3;
+
+            id = getModelId(model_info);
         }
 
         // model_info, dataset_info를 받는 생성자
-        GOLsolver_1(const model_id& config, const dataset_id& dataset, const dataset_id& test_dataset) :
+        GOLsolver_1(const model_id& config, const dataset_id& dataset, const dataset_id& test_dataset, bool load_timestamp=true) :
             // handleStream과 다른 멤버들을 먼저 초기화
             hs(),
             act(), 
@@ -217,6 +220,10 @@ class GOLsolver_1{
             model_info.fc_layer_count = 5;
             using_dataset = dataset;
             test_data_info = test_dataset;
+
+            if(load_timestamp == true) id = getModelId(model_info);
+            else if(load_timestamp == false) id = getModelIdWithoutTimestamp(model_info);
+
         }
 
         void genDataset(){
@@ -311,7 +318,7 @@ class GOLsolver_1{
             std::cout << "[배치 로드 완료] 총 " << N << "개 데이터, " << num_batches << "개 배치" << std::endl;
             
             // Loss 데이터 저장을 위한 파일 생성
-            std::string graphPath = "../graph/" + getModelId(model_info);
+            std::string graphPath = "../graph/" + id;
             fs::create_directories(graphPath);
             std::ofstream epoch_loss_file(graphPath + "/epoch_loss.txt");
             std::ofstream batch_loss_file(graphPath + "/batch_loss.txt");
@@ -401,7 +408,7 @@ class GOLsolver_1{
 
             // 결과 저장을 위한 파일 생성
             fs::create_directories("../result/");
-            std::ofstream result_file("../result/test_results" + getModelId(model_info) + "-to_trained_by-" + getDatasetId(using_dataset) + ".txt");
+            std::ofstream result_file("../result/test_results" + id + "-to_trained_by-" + getDatasetId(using_dataset) + ".txt");
             if (!result_file) {
                 throw std::runtime_error("결과 파일을 열 수 없습니다.");
             }
@@ -413,6 +420,7 @@ class GOLsolver_1{
                 output.cpyToHost(); // GPU에서 CPU로 데이터 복사
                 result_file << "Batch " << i + 1 << ":\n";
                 for (int j = 0; j < output.getRow(); ++j) {
+                    result_file << "Sample " << j + 1 << ": ";
                     for(int k = 0; k < output.getCol(); ++k) {
                         result_file << output.getHostPointer()[j*output.getCol() + k] << ", ";
                     }
@@ -465,28 +473,29 @@ int main(){
         config.optimizer = "Adam";
         config.loss = "BCEWithLogits";
         config.epoch = 1000;
-        config.batch_size = 64;
-        config.learning_rate = 1e-5;
+        config.batch_size = 50;
+        config.learning_rate = 1e-6;
 
         dataset_id dataset_info;
         dataset_info.seed = 54321;
-        dataset_info.sample_quantity = 8000;
+        dataset_info.sample_quantity = 32000;
         dataset_info.alive_ratio = 0.3;
 
         dataset_id test_dataset_info;
         test_dataset_info.seed = 98624;
-        test_dataset_info.sample_quantity = 640;
+        test_dataset_info.sample_quantity = 500;
         test_dataset_info.alive_ratio = 0.3;
 
-        GOLsolver_1 mercury(config, dataset_info, test_dataset_info);
+        std::string loaded_model_timestamp = "-2025-08-17_193828"; // 32000개의 샘플로 훈련된 모델의 타임스탬프
 
-        // 전체 프로세스 실행
-        mercury.run();
+        GOLsolver_1 mercury(config, dataset_info, test_dataset_info, false);
+        mercury.id = mercury.id + loaded_model_timestamp;
 
-        //훈련 후 테스트 데이터셋 생성 및 테스트
-        mercury.genTestDataset();
+        // 모델 로드
+        mercury.loadModel("../model_save/" + mercury.id);
+
         mercury.test();
-        
+
     } catch (const std::exception& e) {
         std::cerr << "프로그램 실행 중 오류: " << e.what() << std::endl;
         return 1;
