@@ -302,6 +302,105 @@ extern "C"{
         return static_cast<void*>(model);
     }
     
+    // 새 모델 생성 (학습용)
+    void* createNewModel(int batch_size, double learning_rate, int epochs) {
+        GOLsolver_1* model = new GOLsolver_1(batch_size, learning_rate, epochs);
+        return static_cast<void*>(model);
+    }
+    
+    // 사용자 입력 패턴으로 학습하는 함수
+    void trainWithUserData(void* model_ptr, float* input_patterns, float* target_labels, int num_samples, int epochs, float* loss_history) {
+        if (!model_ptr) return;
+        
+        GOLsolver_1* model = static_cast<GOLsolver_1*>(model_ptr);
+        auto config = model->getModelInfo();
+        
+        // 입력 데이터를 GPU 메모리로 복사
+        d2::d_matrix_2<double> X(num_samples, 100); // 10x10 = 100
+        d2::d_matrix_2<double> Y(num_samples, 8);   // 8비트 출력
+        
+        // 데이터 복사
+        for (int i = 0; i < num_samples; i++) {
+            for (int j = 0; j < 100; j++) {
+                X(i, j) = input_patterns[i * 100 + j];
+            }
+            for (int k = 0; k < 8; k++) {
+                Y(i, k) = target_labels[i * 8 + k];
+            }
+        }
+        
+        X.cpyToDev();
+        Y.cpyToDev();
+        
+        // 학습 루프
+        for (int epoch = 0; epoch < epochs; epoch++) {
+            double total_loss = 0.0;
+            
+            // 전체 데이터에 대해 학습 (배치 크기만큼 나누어서)
+            for (int start = 0; start < num_samples; start += config.batch_size) {
+                int end = std::min(start + config.batch_size, num_samples);
+                int batch_size = end - start;
+                
+                // 배치 데이터 추출
+                d2::d_matrix_2<double> batch_X(batch_size, 100);
+                d2::d_matrix_2<double> batch_Y(batch_size, 8);
+                
+                for (int i = 0; i < batch_size; i++) {
+                    for (int j = 0; j < 100; j++) {
+                        batch_X(i, j) = X(start + i, j);
+                    }
+                    for (int k = 0; k < 8; k++) {
+                        batch_Y(i, k) = Y(start + i, k);
+                    }
+                }
+                
+                batch_X.cpyToDev();
+                batch_Y.cpyToDev();
+                
+                // Forward pass
+                auto result = model->forward(batch_X, batch_Y);
+                total_loss += result.second;
+                
+                // Backward pass
+                model->backward(result.first, batch_Y);
+            }
+            
+            // 평균 손실 저장
+            if (loss_history) {
+                loss_history[epoch] = static_cast<float>(total_loss / ((num_samples + config.batch_size - 1) / config.batch_size));
+            }
+            
+            // 에폭 진행상황 출력
+            if (epoch % 10 == 0) {
+                std::cout << "User Data Epoch " << epoch << ", Loss: " << (total_loss / ((num_samples + config.batch_size - 1) / config.batch_size)) << std::endl;
+            }
+        }
+    }
+    
+    // 모델 저장
+    bool saveModelToFile(void* model_ptr, const char* filepath) {
+        if (!model_ptr) return false;
+        
+        GOLsolver_1* model = static_cast<GOLsolver_1*>(model_ptr);
+        return model->saveModel(filepath);
+    }
+    
+    // 학습 상태 확인
+    void getTrainingInfo(void* model_ptr, char* info_buffer, int buffer_size) {
+        if (!model_ptr || !info_buffer) return;
+        
+        GOLsolver_1* model = static_cast<GOLsolver_1*>(model_ptr);
+        auto config = model->getModelInfo();
+        
+        snprintf(info_buffer, buffer_size,
+            "Model: %s, Batch: %d, LR: %.6f, Epochs: %d",
+            config.model_name.c_str(),
+            config.batch_size,
+            config.learning_rate,
+            config.epoch
+        );
+    }
+    
     // 예측 함수
     void predict(void* model_ptr, float* input_grid, float* output) {
         if (!model_ptr) return;
@@ -323,6 +422,32 @@ extern "C"{
         // 출력 복사
         for (int i = 0; i < 8; i++) {
             output[i] = static_cast<float>(result.first(0, i));
+        }
+    }
+
+    void getRealGOLnumber(float* input_grid, float* output) {
+        
+        // 입력 데이터 준비
+        d2::d_matrix_2<int> input(10, 10);
+        for (int i = 0; i < 10; i++) {
+            for (int j = 0; j < 10; j++) {
+                input(i, j) = input_grid[i*10 + j];
+            }
+        }
+        input.cpyToDev(); // CPU에서 GPU로 데이터 복사
+
+        int out = GOL_2::simulateAndLabel(input, 0);
+
+        d2::d_matrix_2<double> label(8, 1);
+            // 1) 모두 0으로 초기화
+            label.fill(0.0);
+            // 2) 각 비트 위치에 0/1 설정 (LSB부터)
+            for (int b = 0; b < 8; ++b) {
+                label(b, 0) = (out >> b) & 1;
+        }
+        // 출력 복사
+        for (int i = 7; i >= 0; i--) {
+            output[i] = static_cast<float>(label(i, 0));
         }
     }
     
